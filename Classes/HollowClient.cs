@@ -1,7 +1,4 @@
 ﻿using Hollow_IM_Client.Classes.Models;
-using System;
-using System.Collections.Generic;
-using System.Data;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
@@ -12,12 +9,14 @@ namespace Hollow_IM_Client.Classes
     internal class HollowClient
     {
         
-
         private TcpClient? client;
 
         private NetworkStream? serverStream;
 
         private Chat? chat;
+
+        private CancellationTokenSource? chatSyncCts;
+
         public HollowClient()
         {
             client = null;
@@ -57,43 +56,78 @@ namespace Hollow_IM_Client.Classes
 
         }
 
-        public async Task ReadLoop()
+        public async Task ClientLoop()
         {
             byte[] prefixBuffer = new byte[4];
 
-            while (serverStream != null)
-            {
-                Response? response = await readResponseAsync(prefixBuffer);
-                if (response == null)
-                    continue;
+            // Sync loop
+            chatSyncCts = new CancellationTokenSource();
 
-                switch (response.Action)
+            _ = Task.Run(async () => {
+                while (!chatSyncCts.Token.IsCancellationRequested)
                 {
-                    case "GET_CHAT_INFO":
-                        if (response.Status)
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(3));
+                        if (chat != null)
                         {
-                            var data = response.Payload.Deserialize<ChatModel>()!;
+                            chat.RequestSyncChat(serverStream);
+                        }
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        break;
+                    }
+                }
+            }, chatSyncCts.Token);
 
-                            chat = new Chat(data);
-                        }
+            // Read loop
+            try
+            {
+                while (true)
+                {
+                    Response? response = await readResponseAsync(prefixBuffer);
+                    if (response == null)
                         break;
-                    case "SEND_MESSAGE":
-                        if (response.Status && chat != null)
-                        {
-                            var message = response.Payload.Deserialize<MessageModel>()!;
 
-                            chat.AddMessage(message);
-                        }
-                        break;
-                    case "SYNC_CHAT":
-                        if (response.Status && chat != null)
-                        {
-                            var data = response.Payload.Deserialize<SyncChatModel>()!;
-                            chat.SyncChat(data);
-                        }
-                        break;
+                    switch (response.Action)
+                    {
+                        case "JOIN_CHAT":
+                            if (response.Status)
+                            {
+                                var data = response.Payload.Deserialize<ChatModel>()!;
+
+                                chat = new Chat(data);
+                            }
+                            break;
+                        case "SEND_MESSAGE":
+                            if (response.Status && chat != null)
+                            {
+                                var message = response.Payload.Deserialize<MessageModel>()!;
+
+                                chat.AddMessage(message);
+                            }
+                            break;
+                        case "SYNC_CHAT":
+                            if (response.Status && chat != null)
+                            {
+                                var data = response.Payload.Deserialize<SyncChatModel>()!;
+                                chat.SyncChat(data);
+                            }
+                            break;
+                    }
                 }
             }
+            catch (IOException)
+            {
+                Console.WriteLine("Client disconnected unexpectedly.");
+            }
+            finally
+            {
+                chatSyncCts.Cancel();
+                Disconnect();
+            }
+
         }
 
         public async Task Connect(string address, Int32 port, string username)
@@ -106,9 +140,9 @@ namespace Hollow_IM_Client.Classes
 
                 UserModel user = new UserModel { username = username };
 
-                HollowProtocol.JoinChat(serverStream, user);
+                RequestManager.JoinChat(serverStream, user);
 
-                await ReadLoop();
+                await ClientLoop();
             }
             catch (SocketException ex) {
                     Console.WriteLine($"Socket error: {ex.SocketErrorCode}");
@@ -137,7 +171,7 @@ namespace Hollow_IM_Client.Classes
             if (chat == null) 
                 return;
 
-            chat.SendMessage(serverStream!, message);
+            chat.RequestSendMessage(serverStream!, message);
         }
 
     }

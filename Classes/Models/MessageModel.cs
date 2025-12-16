@@ -15,6 +15,5 @@ namespace Hollow_IM_Client.Classes.Models
 
         [JsonPropertyName("content")]
         public required string Content { get; set; }
-
     }
 }

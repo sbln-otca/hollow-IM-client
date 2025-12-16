@@ -9,7 +9,7 @@ using System.Text.Json;
 
 namespace Hollow_IM_Client.Classes
 {
-    internal class HollowProtocol
+    internal class RequestManager
     {
         private static Byte[] BuildRequestPacket(Request request)
         {
@@ -30,10 +30,13 @@ namespace Hollow_IM_Client.Classes
         }
         public static void JoinChat(NetworkStream stream, UserModel user)
         {
-            string userStr = JsonSerializer.Serialize<UserModel>(user);
-            var userJson = JsonDocument.Parse(userStr);
+            JsonElement payload;
 
-            var request = new Models.Request { Action = "JOIN_CHAT", Payload = userJson.RootElement.Clone() };
+            string userStr = JsonSerializer.Serialize<UserModel>(user);
+            using var userJson = JsonDocument.Parse(userStr);
+            payload = userJson.RootElement.Clone();
+
+            var request = new Models.Request { Action = "JOIN_CHAT", Payload = payload };
 
             var packet = BuildRequestPacket(request);
             stream.Write(packet, 0, packet.Length);
@@ -42,22 +45,28 @@ namespace Hollow_IM_Client.Classes
         }
         public static void SendMessage(NetworkStream stream, MessageModel message)
         {
-            string messageStr = JsonSerializer.Serialize<MessageModel>(message);
-            var messageJson = JsonDocument.Parse(messageStr);
+            JsonElement payload;
 
-            var request = new Models.Request { Action = "SEND_MESSAGE", Payload = messageJson.RootElement.Clone() };
+            string messageStr = JsonSerializer.Serialize<MessageModel>(message);
+            using var messageJson = JsonDocument.Parse(messageStr);
+            payload = messageJson.RootElement.Clone();
+
+            var request = new Models.Request { Action = "SEND_MESSAGE", Payload = payload };
 
             var packet = BuildRequestPacket(request);
             stream.Write(packet, 0, packet.Length);
 
             return;
         }
-        public static void SyncChat(NetworkStream stream, int messageState, int userState)
+        public static void SyncChat(NetworkStream stream, ClientChatState state)
         {
-            string stateStr = JsonSerializer.Serialize<int>(messageState);
-            var stateJson = JsonDocument.Parse(stateStr);
+            JsonElement payload;
 
-            var request = new Models.Request { Action = "SYNC_CHAT", Payload = stateJson.RootElement.Clone() };
+            string stateStr = JsonSerializer.Serialize<ClientChatState>(state);
+            using var stateJson = JsonDocument.Parse(stateStr);
+            payload = stateJson.RootElement.Clone();
+
+            var request = new Models.Request { Action = "SYNC_CHAT", Payload = payload };
 
             var packet = BuildRequestPacket(request);
             stream.Write(packet, 0, packet.Length);

@@ -1,6 +1,7 @@
 ﻿using Hollow_IM_Client.Classes.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Sockets;
 using System.Text;
 
@@ -11,9 +12,8 @@ namespace Hollow_IM_Client.Classes
         private UserModel me;
 
         private int messagesState;
-        private List<MessageModel> messages;
+        public List<MessageModel> messages { get; }
 
-        private int usersState;
         private List<UserModel> users;
 
         public Chat(ChatModel chat)
@@ -23,11 +23,11 @@ namespace Hollow_IM_Client.Classes
             messagesState = chat.MessagesState;
             messages = chat.Messages;
 
-            usersState = chat.UsersState;
             users = chat.Users;
+            return;
         }
 
-        public void SendMessage(NetworkStream stream, string content)
+        public void RequestSendMessage(NetworkStream stream, string content)
         {
             MessageModel message = new MessageModel
             {
@@ -36,46 +36,32 @@ namespace Hollow_IM_Client.Classes
                 Content = content
             };
 
-            HollowProtocol.SendMessage(stream, message);
+            RequestManager.SendMessage(stream, message);
+            return;
         }
         public void AddMessage(MessageModel message)
         {
             messages.Add(message);
+            return;
+        }
+
+        public void RequestSyncChat(NetworkStream stream)
+        {
+            ClientChatState state = new ClientChatState { MessagesState = messagesState };
+
+            RequestManager.SyncChat(stream, state);
+            return;
         }
 
         public void SyncChat(SyncChatModel state)
         {
+            users = state.Users;
 
-            //if (latestState == null) 
-            //    return;
+            messages.AddRange(state.MessagesDelta);
 
-            if (state.MessagesDelta != null)
-            {
-                messages.AddRange(state.MessagesDelta);
-                messagesState = state.LastMessagesState;
-            }
-                
-            if (state.UsersDelta != null)
-            {
-                foreach (UserDelta delta in state.UsersDelta)
-                {
-                    if (delta.UsersToRemove != null)
-                    {
-                        foreach(UserModel user in delta.UsersToRemove)
-                        {
-                            users.Remove(user);
-                        }
-                    }
-                    if (delta.UsersToAdd != null)
-                    {
-                        foreach (UserModel user in delta.UsersToAdd)
-                        {
-                            users.Add(user);
-                        }
-                    }
-                }
-                usersState = state.LastUsersState;
-            }
+            messagesState = state.LastMessagesState;
+            return;
         }
+
     }
 }
